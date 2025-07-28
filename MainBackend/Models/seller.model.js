@@ -1,4 +1,4 @@
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
 
 const sellerSchema = new mongoose.Schema(
   {
@@ -42,8 +42,8 @@ const sellerSchema = new mongoose.Schema(
         validator: function(v) {
           return /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/.test(v);
         },
-        message: 'Invalid GST number format'
-      }
+        message: 'Invalid GST number format',
+      },
     },
     drugLicense1: {
       type: String,
@@ -65,11 +65,11 @@ const sellerSchema = new mongoose.Schema(
       },
       coordinates: {
         latitude: {
-          type: String,
+          type: Number,
           required: true,
         },
         longitude: {
-          type: String,
+          type: Number,
           required: true,
         },
       },
@@ -88,31 +88,33 @@ const sellerSchema = new mongoose.Schema(
     },
 
     // Shop Photos
-    shopPhotos: [{
-      photoId: {
-        type: String,
-        required: true,
+    shopPhotos: [
+      {
+        photoId: {
+          type: String,
+          required: true,
+        },
+        fileName: {
+          type: String,
+          required: true,
+        },
+        fileUrl: {
+          type: String,
+          required: true,
+        },
+        fileSize: {
+          type: Number,
+        },
+        mimeType: {
+          type: String,
+          default: 'image/jpeg',
+        },
+        uploadedAt: {
+          type: Date,
+          default: Date.now,
+        },
       },
-      fileName: {
-        type: String,
-        required: true,
-      },
-      fileUrl: {
-        type: String,
-        required: true,
-      },
-      fileSize: {
-        type: Number,
-      },
-      mimeType: {
-        type: String,
-        default: 'image/jpeg',
-      },
-      uploadedAt: {
-        type: Date,
-        default: Date.now,
-      },
-    }],
+    ],
 
     // Verification Status
     isVerified: {
@@ -201,11 +203,13 @@ const sellerSchema = new mongoose.Schema(
       trim: true,
       maxlength: 500,
     },
-    specializations: [{
-      type: String,
-      trim: true,
-    }],
-    
+    specializations: [
+      {
+        type: String,
+        trim: true,
+      },
+    ],
+
     // Rating and Reviews
     rating: {
       average: {
@@ -266,17 +270,19 @@ const sellerSchema = new mongoose.Schema(
     },
 
     // FCM Token for Push Notifications
-    fcmTokens: [{
-      token: String,
-      deviceType: {
-        type: String,
-        enum: ['android', 'ios'],
+    fcmTokens: [
+      {
+        token: String,
+        deviceType: {
+          type: String,
+          enum: ['android', 'ios'],
+        },
+        createdAt: {
+          type: Date,
+          default: Date.now,
+        },
       },
-      createdAt: {
-        type: Date,
-        default: Date.now,
-      },
-    }],
+    ],
 
     // Reset Password
     resetPasswordToken: String,
@@ -299,10 +305,10 @@ const sellerSchema = new mongoose.Schema(
     },
     phoneVerifiedAt: Date,
   },
-  { 
+  {
     timestamps: true,
     toJSON: { virtuals: true },
-    toObject: { virtuals: true }
+    toObject: { virtuals: true },
   }
 );
 
@@ -313,18 +319,18 @@ sellerSchema.index({ gstNumber: 1 });
 sellerSchema.index({ isVerified: 1 });
 sellerSchema.index({ verificationStatus: 1 });
 sellerSchema.index({ isActive: 1 });
-sellerSchema.index({ "location.coordinates.latitude": 1, "location.coordinates.longitude": 1 });
+sellerSchema.index({ 'location.coordinates': '2dsphere' });
 
 // Virtual for full address
-sellerSchema.virtual('fullAddress').get(function() {
+sellerSchema.virtual('fullAddress').get(function () {
   return `${this.location.address}, ${this.location.city}, ${this.location.state} - ${this.location.pincode}`;
 });
 
 // Virtual for completion percentage
-sellerSchema.virtual('profileCompletion').get(function() {
+sellerSchema.virtual('profileCompletion').get(function () {
   let completed = 0;
   let total = 10;
-  
+
   if (this.ownerName) completed++;
   if (this.pharmacyName) completed++;
   if (this.email) completed++;
@@ -335,17 +341,17 @@ sellerSchema.virtual('profileCompletion').get(function() {
   if (this.location.address) completed++;
   if (this.shopPhotos.length > 0) completed++;
   if (this.description) completed++;
-  
+
   return Math.round((completed / total) * 100);
 });
 
 // Virtual for shop photo count
-sellerSchema.virtual('shopPhotoCount').get(function() {
+sellerSchema.virtual('shopPhotoCount').get(function () {
   return this.shopPhotos.length;
 });
 
 // Methods
-sellerSchema.methods.addShopPhoto = function(photoData) {
+sellerSchema.methods.addShopPhoto = function (photoData) {
   this.shopPhotos.push({
     photoId: photoData.photoId,
     fileName: photoData.fileName,
@@ -356,17 +362,17 @@ sellerSchema.methods.addShopPhoto = function(photoData) {
   return this.save();
 };
 
-sellerSchema.methods.removeShopPhoto = function(photoId) {
-  this.shopPhotos = this.shopPhotos.filter(photo => photo.photoId !== photoId);
+sellerSchema.methods.removeShopPhoto = function (photoId) {
+  this.shopPhotos = this.shopPhotos.filter((photo) => photo.photoId !== photoId);
   return this.save();
 };
 
-sellerSchema.methods.updateLastActive = function() {
+sellerSchema.methods.updateLastActive = function () {
   this.metrics.lastActiveAt = new Date();
   return this.save();
 };
 
-sellerSchema.methods.isOnline = function() {
+sellerSchema.methods.isOnline = function () {
   const now = new Date();
   const lastActive = this.metrics.lastActiveAt;
   const timeDiff = now - lastActive;
@@ -374,16 +380,23 @@ sellerSchema.methods.isOnline = function() {
 };
 
 // Static methods
-sellerSchema.statics.findByLocation = function(lat, lng, radius = 10) {
-  // This would work with proper geospatial indexing
-  // For now, it's a placeholder for location-based queries
+sellerSchema.statics.findByLocation = function (lat, lng, radius = 10) {
   return this.find({
     isActive: true,
     isVerified: true,
+    'location.coordinates': {
+      $near: {
+        $geometry: {
+          type: 'Point',
+          coordinates: [parseFloat(lng), parseFloat(lat)],
+        },
+        $maxDistance: radius * 1000, // Radius in meters
+      },
+    },
   });
 };
 
-sellerSchema.statics.findVerified = function() {
+sellerSchema.statics.findVerified = function () {
   return this.find({
     isVerified: true,
     isActive: true,
@@ -392,21 +405,22 @@ sellerSchema.statics.findVerified = function() {
 };
 
 // Pre-save middleware
-sellerSchema.pre('save', function(next) {
-  // Update verification status based on document verification
-  if (this.documentsStatus.gstVerified && 
-      this.documentsStatus.drugLicense1Verified && 
-      this.documentsStatus.drugLicense2Verified && 
-      this.documentsStatus.shopPhotosVerified) {
+sellerSchema.pre('save', function (next) {
+  if (
+    this.documentsStatus.gstVerified &&
+    this.documentsStatus.drugLicense1Verified &&
+    this.documentsStatus.drugLicense2Verified &&
+    this.documentsStatus.shopPhotosVerified
+  ) {
     this.verificationStatus = 'verified';
     this.isVerified = true;
     if (!this.verifiedAt) {
       this.verifiedAt = new Date();
     }
   }
-  
+
   next();
 });
 
 // Export model
-module.exports = mongoose.model("Seller", sellerSchema);
+module.exports = mongoose.model('Seller', sellerSchema);
