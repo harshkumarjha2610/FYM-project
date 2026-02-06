@@ -2,22 +2,36 @@ const mongoose = require('mongoose');
 
 const orderSchema = new mongoose.Schema({
   buyerId: {
-    type: mongoose.Schema.Types.ObjectId,
-    ref: 'Buyer',
+    type: String,
     required: true
   },
+  // ✅ ADD THESE FIELDS
+  sellerId: {
+    type: String,
+    default: null
+  },
+  seller: {
+    type: mongoose.Schema.Types.ObjectId,
+    ref: 'Seller',
+    default: null
+  },
+  respondedAt: {
+    type: Date,
+    default: null
+  },
+  // ✅ END NEW FIELDS
   items: [{
     medicineId: {
-      type: String, // Since your frontend uses hardcoded IDs, we'll use string for flexibility
-      required: true
+      type: String,
+      required: false
     },
     name: {
       type: String,
-      required: true
+      required: false
     },
     manufacturer: {
       type: String,
-      required: true
+      required: false
     },
     price: {
       type: Number,
@@ -34,7 +48,7 @@ const orderSchema = new mongoose.Schema({
     required: true
   },
   prescriptionImage: {
-    type: String, // Store image URL or base64 string
+    type: String,
     default: null
   },
   location: {
@@ -49,12 +63,12 @@ const orderSchema = new mongoose.Schema({
     },
     address: {
       type: String,
-      required: true
+      required: false
     }
   },
   status: {
     type: String,
-    enum: ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'],
+    enum: ['pending', 'accepted', 'rejected', 'confirmed', 'shipped', 'delivered', 'cancelled'], // ✅ Added 'accepted' and 'rejected'
     default: 'pending'
   },
   createdAt: {
@@ -65,6 +79,6 @@ const orderSchema = new mongoose.Schema({
   timestamps: true
 });
 
-orderSchema.index({ location: '2dsphere' }); // Enable geospatial queries for location
+orderSchema.index({ location: '2dsphere' });
 
 module.exports = mongoose.model('Order', orderSchema);

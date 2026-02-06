@@ -1,215 +1,263 @@
-const Order = require('../Models/order.js');
-const Seller = require('../Models/seller.model.js'); // assuming this model exists
-const mongoose = require('mongoose');
+// ===================================================================
+// Order Controller (order.controller.js)
+// ===================================================================
+const Order = require("../Models/order.js");
+const Seller = require("../Models/seller.model.js");
 
+// -------------------------------------------------------------------
 // Create a new order
+// -------------------------------------------------------------------
 exports.createOrder = async (req, res) => {
-  console.log('🚀 Starting createOrder function');
-  console.log('📨 Request body received:', JSON.stringify(req.body, null, 2));
-  
+  console.log("🚀 Starting createOrder function");
+  console.log("📨 Request body:", JSON.stringify(req.body, null, 2));
+
   try {
     const { buyerId, items, totalAmount, prescriptionImage, location } = req.body;
-    console.log('✅ Successfully destructured request body');
-    console.log('👤 Buyer ID:', buyerId);
-    console.log('📦 Items:', JSON.stringify(items, null, 2));
-    console.log('💰 Total Amount:', totalAmount);
-    console.log('📋 Prescription Image:', prescriptionImage ? 'Present' : 'Not provided');
-    console.log('📍 Location:', JSON.stringify(location, null, 2));
+    const io = req.app.get("io"); // ✅ get io instance
 
-    console.log('🔍 Starting search for nearest seller...');
-    console.log('📍 Searching from coordinates:', location.coordinates);
-    
-    // Find nearest seller who is accepting orders
-    const nearestSeller = await Seller.findOne({
+    // Extract coordinates
+    let longitude, latitude;
+    if (location?.coordinates && Array.isArray(location.coordinates)) {
+      [longitude, latitude] = location.coordinates;
+    } else if (location?.longitude && location?.latitude) {
+      longitude = location.longitude;
+      latitude = location.latitude;
+    } else {
+      throw new Error("Invalid location format: must be [lon, lat] or object {longitude, latitude}");
+    }
+
+    if (typeof longitude !== "number" || typeof latitude !== "number") {
+      throw new Error("Invalid coordinates: longitude and latitude must be numbers");
+    }
+
+    // Find nearby sellers
+    const allSellers = await Seller.find({
       isAcceptingOrders: true,
       location: {
         $near: {
-          $geometry: {
-            type: "Point",
-            coordinates: location.coordinates
-          },
-          $maxDistance: 10000 // adjust based on delivery range in meters
-        }
-      }
+          $geometry: { type: "Point", coordinates: [longitude, latitude] },
+          $maxDistance: 100000, // 1 km radius
+        },
+      },
     });
 
-    console.log('🔍 Seller search completed');
-    console.log('🏪 Nearest seller found:', nearestSeller ? 'YES' : 'NO');
-    
-    if (nearestSeller) {
-      console.log('🏪 Seller details:', {
-        id: nearestSeller._id,
-        name: nearestSeller.name || 'N/A',
-        isAcceptingOrders: nearestSeller.isAcceptingOrders
-      });
-    }
+    console.log(`🏪 Found ${allSellers.length} sellers nearby`);
 
-    if (!nearestSeller) {
-      console.log('❌ No sellers available - sending error response');
-      return res.status(400).json({ message: 'No sellers are accepting orders currently' });
-    }
-
-    console.log('📝 Creating new order object...');
+    // Create order
     const newOrder = new Order({
       buyerId,
       items,
       totalAmount,
       prescriptionImage,
       location,
-      assignedSellerId: nearestSeller._id // Optional if you're storing this in Order
+      status: "pending",
     });
-
-    console.log('📝 Order object created:', JSON.stringify(newOrder.toObject(), null, 2));
-    console.log('💾 Attempting to save order to database...');
-    
     await newOrder.save();
-    
-    console.log('✅ Order saved successfully to database');
-    console.log('📤 Sending success response...');
+    console.log("✅ Order saved to DB:", newOrder._id);
 
-    res.status(201).json({ message: 'Order placed successfully', order: newOrder });
-    console.log('✅ Success response sent');
-    
+    // Notify sellers
+    if (allSellers.length > 0) {
+      allSellers.forEach((seller) => {
+        console.log(`📤 Sending newOrder to seller_${seller._id}`);
+        io.to(`seller_${seller._id}`).emit("newOrder", newOrder);
+      });
+    } else {
+      console.log("⚠️ No nearby sellers found to notify");
+    }
+
+    res.status(201).json({
+      message: "Order placed successfully",
+      order: newOrder,
+      sellersFound: allSellers.length,
+    });
   } catch (error) {
-    console.error('❌ Error in createOrder function:', error);
-    console.error('❌ Error stack:', error.stack);
-    console.error('❌ Error name:', error.name);
-    console.error('❌ Error message:', error.message);
-    console.log('📤 Sending error response...');
-    
-    res.status(500).json({ message: 'Internal server error' });
-    console.log('❌ Error response sent');
+    console.error("❌ Error in createOrder:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
-// Get all orders for a buyer
+// -------------------------------------------------------------------
+// Get all orders (for debugging / admin use)
+// -------------------------------------------------------------------
+exports.getOrders = async (req, res) => {
+  try {
+    console.log("📥 Fetching all orders...");
+    const orders = await Order.find().sort({ createdAt: -1 });
+    console.log(`✅ Found ${orders.length} orders`);
+    res.status(200).json(orders);
+  } catch (error) {
+    console.error("❌ Error in getOrders:", error);
+    res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+// -------------------------------------------------------------------
+// Get all orders by buyer
+// -------------------------------------------------------------------
 exports.getOrdersByBuyer = async (req, res) => {
-  console.log('🚀 Starting getOrdersByBuyer function');
-  console.log('📨 Request params:', JSON.stringify(req.params, null, 2));
-  
   try {
     const buyerId = req.params.buyerId;
-    console.log('👤 Extracted buyer ID:', buyerId);
-    console.log('🔍 Searching for orders for buyer:', buyerId);
-
+    console.log(`📥 Fetching orders for buyer: ${buyerId}`);
     const orders = await Order.find({ buyerId }).sort({ createdAt: -1 });
-    
-    console.log('🔍 Database query completed');
-    console.log('📦 Number of orders found:', orders.length);
-    console.log('📦 Orders data:', JSON.stringify(orders, null, 2));
-    console.log('📤 Sending orders response...');
-
+    console.log(`✅ Found ${orders.length} orders for buyer`);
     res.status(200).json(orders);
-    console.log('✅ Orders response sent successfully');
-    
   } catch (error) {
-    console.error('❌ Error in getOrdersByBuyer function:', error);
-    console.error('❌ Error stack:', error.stack);
-    console.error('❌ Error name:', error.name);
-    console.error('❌ Error message:', error.message);
-    console.log('📤 Sending error response...');
-    
-    res.status(500).json({ message: 'Internal server error' });
-    console.log('❌ Error response sent');
+    console.error("❌ Error in getOrdersByBuyer:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
-// Get single order by ID
+// -------------------------------------------------------------------
+// Get single order
+// -------------------------------------------------------------------
 exports.getOrderById = async (req, res) => {
-  console.log('🚀 Starting getOrderById function');
-  console.log('📨 Request params:', JSON.stringify(req.params, null, 2));
-  
   try {
     const orderId = req.params.orderId;
-    console.log('🆔 Extracted order ID:', orderId);
-    console.log('🔍 Searching for order with ID:', orderId);
-
+    console.log(`📥 Fetching order by ID: ${orderId}`);
     const order = await Order.findById(orderId);
-    
-    console.log('🔍 Database query completed');
-    console.log('📦 Order found:', order ? 'YES' : 'NO');
-    
-    if (order) {
-      console.log('📦 Order data:', JSON.stringify(order.toObject(), null, 2));
-    }
 
     if (!order) {
-      console.log('❌ Order not found - sending 404 response');
-      return res.status(404).json({ message: 'Order not found' });
+      console.log("⚠️ Order not found");
+      return res.status(404).json({ message: "Order not found" });
     }
-
-    console.log('📤 Sending order response...');
+    console.log("✅ Order found:", order._id);
     res.status(200).json(order);
-    console.log('✅ Order response sent successfully');
-    
   } catch (error) {
-    console.error('❌ Error in getOrderById function:', error);
-    console.error('❌ Error stack:', error.stack);
-    console.error('❌ Error name:', error.name);
-    console.error('❌ Error message:', error.message);
-    console.log('📤 Sending error response...');
-    
-    res.status(500).json({ message: 'Internal server error' });
-    console.log('❌ Error response sent');
+    console.error("❌ Error in getOrderById:", error);
+    res.status(500).json({ message: "Internal server error" });
   }
 };
 
-// Update order status
-exports.updateOrderStatus = async (req, res) => {
-  console.log('🚀 Starting updateOrderStatus function');
-  console.log('📨 Request params:', JSON.stringify(req.params, null, 2));
-  console.log('📨 Request body:', JSON.stringify(req.body, null, 2));
-  
+// -------------------------------------------------------------------
+// Seller responds to order (accept/reject)
+// -------------------------------------------------------------------
+exports.sellerRespondToOrder = async (req, res) => {
   try {
+    console.log('\n📦 ========================================');
+    console.log('📦 SELLER RESPOND TO ORDER');
+    console.log('📦 ========================================');
+    console.log('⏰ Request time:', new Date().toISOString());
+    console.log('🆔 Order ID from params:', req.params.orderId);
+    console.log('📋 Request body:', JSON.stringify(req.body, null, 2));
+    console.log('🔐 Authenticated seller from middleware:', req.seller);
+    console.log('📋 Request headers:', Object.keys(req.headers));
+
     const { orderId } = req.params;
-    const { status } = req.body;
-    
-    console.log('🆔 Extracted order ID:', orderId);
-    console.log('📊 Extracted status:', status);
+    const { action, status } = req.body; // Accept both 'action' and 'status'
+    const io = req.app.get("io");
 
-    const validStatuses = ['pending', 'confirmed', 'shipped', 'delivered', 'cancelled'];
-    console.log('✅ Valid statuses defined:', validStatuses.join(', '));
-    console.log('🔍 Checking if provided status is valid...');
+    // ✅ Get seller ID from authenticated middleware (not from body)
+    const sellerId = req.seller?.sellerId || req.seller?.id || req.body.sellerId;
     
-    if (!validStatuses.includes(status)) {
-      console.log('❌ Invalid status provided:', status);
-      console.log('📤 Sending invalid status error response...');
-      return res.status(400).json({ message: 'Invalid status' });
-    }
-    
-    console.log('✅ Status validation passed');
-    console.log('🔄 Attempting to update order in database...');
+    console.log('🔍 Seller ID resolved to:', sellerId);
 
-    const order = await Order.findByIdAndUpdate(
-      orderId,
-      { status },
-      { new: true }
-    );
-
-    console.log('🔄 Database update completed');
-    console.log('📦 Updated order found:', order ? 'YES' : 'NO');
-    
-    if (order) {
-      console.log('📦 Updated order data:', JSON.stringify(order.toObject(), null, 2));
+    // Validate seller authentication
+    if (!sellerId) {
+      console.log('❌ No seller ID found in request');
+      return res.status(401).json({ 
+        success: false,
+        message: "Authentication required - no seller ID" 
+      });
     }
 
+    // Validate action
+    const finalAction = action || (status === 'accepted' ? 'accept' : status === 'rejected' ? 'reject' : null);
+    
+    console.log('🔍 Action validation:', {
+      receivedAction: action,
+      receivedStatus: status,
+      finalAction: finalAction
+    });
+
+    if (!finalAction || !["accept", "reject"].includes(finalAction)) {
+      console.log('❌ Invalid action:', { action, status, finalAction });
+      return res.status(400).json({ 
+        success: false,
+        message: "Invalid action. Expected 'accept' or 'reject'" 
+      });
+    }
+
+    console.log(`📥 Seller ${sellerId} responding to order ${orderId} with action: ${finalAction}`);
+
+    // Find order
+    console.log('🔍 Finding order...');
+    const order = await Order.findById(orderId);
+    
     if (!order) {
-      console.log('❌ Order not found during update - sending 404 response');
-      return res.status(404).json({ message: 'Order not found' });
+      console.log('❌ Order not found');
+      return res.status(404).json({ 
+        success: false,
+        message: "Order not found" 
+      });
     }
 
-    console.log('📤 Sending success update response...');
-    res.status(200).json({ message: 'Order status updated', order });
-    console.log('✅ Update response sent successfully');
+    console.log('✅ Order found:', {
+      orderId: order._id,
+      currentStatus: order.status,
+      buyer: order.buyerId || order.buyer,
+      currentSeller: order.sellerId || order.seller
+    });
+
+    // Check if order is still pending
+    if (order.status !== 'pending') {
+      console.log('❌ Order already processed:', order.status);
+      return res.status(400).json({
+        success: false,
+        message: `Order is already ${order.status}. Cannot modify.`
+      });
+    }
+
+    // Update order
+    const newStatus = finalAction === "accept" ? "accepted" : "rejected";
+    order.status = newStatus;
+    order.sellerId = sellerId;
+    order.seller = sellerId;
+    order.respondedAt = new Date();
     
+    await order.save();
+
+    console.log(`✅ Order ${orderId} updated to ${order.status}`);
+
+    // Notify buyer about decision via Socket.IO (if available)
+    if (io) {
+      const buyerId = order.buyerId || order.buyer;
+      console.log('📡 Emitting socket event to buyer:', buyerId);
+      
+      io.to(`buyer_${buyerId}`).emit("orderResponse", {
+        orderId,
+        status: order.status,
+        sellerId: sellerId,
+        timestamp: new Date()
+      });
+      
+      console.log('✅ Socket notification sent');
+    } else {
+      console.log('⚠️ Socket.IO not available, skipping real-time notification');
+    }
+
+    console.log('📤 Sending success response');
+    res.status(200).json({ 
+      success: true,
+      message: `Order ${newStatus} successfully`, 
+      order: order,
+      orderId: order._id,
+      status: order.status
+    });
+
+    console.log('📦 ========================================\n');
+
   } catch (error) {
-    console.error('❌ Error in updateOrderStatus function:', error);
-    console.error('❌ Error stack:', error.stack);
-    console.error('❌ Error name:', error.name);
-    console.error('❌ Error message:', error.message);
-    console.log('📤 Sending error response...');
+    console.error('❌ ========================================');
+    console.error('❌ ERROR IN SELLER RESPOND TO ORDER');
+    console.error('❌ ========================================');
+    console.error('💥 Error name:', error.name);
+    console.error('💥 Error message:', error.message);
+    console.error('💥 Error stack:', error.stack);
     
-    res.status(500).json({ message: 'Internal server error' });
-    console.log('❌ Error response sent');
+    res.status(500).json({ 
+      success: false,
+      message: "Internal server error",
+      error: process.env.NODE_ENV === 'development' ? error.message : 'Server error'
+    });
   }
 };
