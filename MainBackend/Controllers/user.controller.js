@@ -20,9 +20,9 @@ const validateRegistrationInput = (name, email, password, mobile) => {
     errors.push("Password must be at least 8 characters long");
   }
   
-  if (!password.match(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]/)) {
-    errors.push("Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character");
-  }
+  // if (!password.match(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[@$!%*?&])[A-Za-z\d@$!%*?&]{8,}$/)) {
+  //   errors.push("Password must contain at least one uppercase letter, one lowercase letter, one number, and one special character");
+  // }
   
   if (mobile && !validator.isMobilePhone(mobile, 'en-IN')) {
     errors.push("Please provide a valid mobile number");

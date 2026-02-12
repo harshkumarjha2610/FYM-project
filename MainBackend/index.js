@@ -63,15 +63,17 @@ console.log("\n⚙️ === STEP 3: MIDDLEWARE SETUP ===");
 console.log("🔧 Configuring CORS options...");
 
 const corsOptions = {
-  origin: [
-    "http://localhost:8081",
-    "http://localhost:3001", 
-    "http://127.0.0.1:8081",
-    "http://localhost:3000",
-    "http://192.168.1.3:8081", // Replace with your actual IP address
-    "http://192.168.1.3:3000",
-    "https://rambackend-1-qmpn.onrender.com" // Replace with your actual IP address
-  ],
+  // origin: [
+  //   "exp://192.168.1.5:8081",
+  //   "http://localhost:8081",
+  //   "http://localhost:3001", 
+  //   "http://127.0.0.1:8081",
+  //   "http://localhost:3000",
+  //   "http://192.168.1.3:8081", // Replace with your actual IP address
+  //   "http://192.168.1.3:3000",
+  //   "https://rambackend-1-qmpn.onrender.com" // Replace with your actual IP address
+  // ],
+  origin: ['*'],
   methods: ["GET", "POST", "PUT", "DELETE", "PATCH", "OPTIONS"],
   credentials: true,
 };
